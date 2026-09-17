@@ -199,8 +199,8 @@
 </div>
 
 <script>
-    // Fetch the source code dynamically
-    fetch('labchat.py')
+    // Fetch the source code dynamically (append timestamp to bypass browser cache)
+    fetch('labchat.py?v=' + new Date().getTime(), { cache: 'no-store' })
         .then(response => {
             if (!response.ok) {
                 throw new Error('Network response was not ok');
