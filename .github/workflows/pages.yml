@@ -28,23 +28,21 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Inject Python Code into HTML
         run: |
-          python3 -c '
+          python3 << 'EOF'
           import sys
+          import re
           html = open("index.html").read()
           code = open("labchat.py").read()
-          # We replace the "Loading labchat.py..." placeholder and the script tag if needed,
-          # but just replacing the placeholder is enough.
-          # To be safe, we will replace the text content of the code block.
-          import re
+          
           new_html = re.sub(
-              r"(<code id=\"source-code\">)(.*?)(</code>)",
+              r'(<code id="source-code">)(.*?)(</code>)',
               lambda m: m.group(1) + code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + m.group(3),
               html,
               flags=re.DOTALL
           )
           new_html = re.sub(r"fetch\('labchat\.py.*?\}\);", "", new_html, flags=re.DOTALL)
           open("index.html", "w").write(new_html)
-          '
+          EOF
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
