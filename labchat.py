@@ -334,12 +334,30 @@ class LabChat:
         threading.Thread(target=listen_loop, daemon=True).start()
 
     def scan_subnet(self):
-        subnet = get_subnet(self.local_ip)
-        if not subnet:
-            self.print_msg("Could not determine local subnet.")
+        subnets_to_scan = []
+        local_subnet = get_subnet(self.local_ip)
+        if local_subnet:
+            subnets_to_scan.append(local_subnet)
+            
+        # Extra hardcoded ranges
+        for extra in ["10.11.0.0/24", "10.12.0.0/24"]:
+            try:
+                subnets_to_scan.append(ipaddress.IPv4Network(extra, strict=False))
+            except Exception:
+                pass
+                
+        if not subnets_to_scan:
+            self.print_msg("Could not determine any subnets to scan.")
             return
             
-        self.print_msg(f"Scanning {subnet}...")
+        ips = []
+        for subnet in set(subnets_to_scan):
+            ips.extend(list(subnet.hosts()))
+            
+        # Deduplicate IPs
+        ips = list(set(ips))
+        
+        self.print_msg(f"Scanning {len(ips)} IPs across {len(set(subnets_to_scan))} subnets...")
         
         def check_ip(ip_obj):
             ip = str(ip_obj)
@@ -375,8 +393,7 @@ class LabChat:
             except Exception:
                 pass
                 
-        ips = list(subnet.hosts())
-        with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
             executor.map(check_ip, ips)
             
         self.print_msg("Scan complete.")
