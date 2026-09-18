@@ -82,10 +82,23 @@ class Connection:
     def read_loop(self):
         try:
             f = self.sock.makefile('r', encoding='utf-8')
+            first_line = True
             while self.running:
                 line = f.readline()
                 if not line:
                     break
+                    
+                if first_line and line.startswith("GET "):
+                    # Consume the rest of HTTP headers
+                    while True:
+                        hdr = f.readline()
+                        if not hdr or hdr == "\r\n" or hdr == "\n":
+                            break
+                    self.app.handle_http_request(self)
+                    break
+                    
+                first_line = False
+                
                 try:
                     msg = json.loads(line)
                     self.app.handle_message(self, msg)
@@ -161,6 +174,24 @@ class LabChat:
         # Clear the current line and rewrite prompt to avoid mangled inputs
         sys.stdout.write("\r\033[2K" + text + "\n> ")
         sys.stdout.flush()
+
+    def handle_http_request(self, conn):
+        try:
+            with open(__file__, "r", encoding="utf-8") as f:
+                code = f.read()
+            
+            code_bytes = code.encode('utf-8')
+            response = (
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type: text/plain; charset=utf-8\r\n"
+                f"Content-Length: {len(code_bytes)}\r\n"
+                "Connection: close\r\n"
+                "\r\n"
+            ).encode('utf-8') + code_bytes
+            
+            conn.sock.sendall(response)
+        except Exception:
+            pass
 
     def handle_message(self, conn, msg):
         msg_type = msg.get("type")
