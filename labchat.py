@@ -144,6 +144,9 @@ class LabChat:
         self.peers = {}  # id -> {name, ip, port, last_seen}
         self.connections = []  # list of Connection objects
         
+        self.seen_messages = set()
+        self.is_central_server = False
+        
         self.running = False
         self.server_sock = None
         self.udp_sock = None
@@ -219,12 +222,28 @@ class LabChat:
                 })
                 
         elif msg_type == "message":
+            msg_id = msg.get("id")
+            if msg_id:
+                if msg_id in self.seen_messages:
+                    return
+                self.seen_messages.add(msg_id)
+                # Keep memory bounded
+                if len(self.seen_messages) > 1000:
+                    self.seen_messages.clear()
+                    self.seen_messages.add(msg_id)
+                    
             sender = msg.get("sender", "Unknown")
             text = msg.get("message", "")
             timestamp = msg.get("timestamp", int(time.time()))
             dt = datetime.fromtimestamp(timestamp)
             time_str = dt.strftime("%H:%M")
             self.print_msg(f"[{time_str}] {sender}: {text}")
+            
+            # Forward if we are central server
+            if self.is_central_server:
+                for c in self.connections:
+                    if c != conn:
+                        c.send(msg)
 
     def handle_disconnect(self, conn):
         if conn in self.connections:
@@ -408,6 +427,7 @@ Commands:
 /name <new_name>       Change your name
 /status                Show network status
 /server                Show active connections
+/central               Toggle Central Server routing mode
 /set-server <ip>       Set default server to connect on startup
 /port                  Show current port
 /clear                 Clear terminal
@@ -534,6 +554,10 @@ Commands:
                         self.print_msg(f"- {name} ({c.addr[0]}:{c.addr[1]})")
                 else:
                     self.print_msg("No active connections.")
+            elif cmd == "/central":
+                self.is_central_server = not self.is_central_server
+                mode = "ENABLED" if self.is_central_server else "DISABLED"
+                self.print_msg(f"Central Server mode {mode}. You will now route messages to all connected peers.")
             elif cmd == "/port":
                 self.print_msg(f"Current port: {self.port}")
             elif cmd == "/clear":
@@ -550,13 +574,16 @@ Commands:
                 self.send_chat_message(text)
 
     def send_chat_message(self, text):
+        msg_id = str(uuid.uuid4())
         msg = {
             "type": "message",
-            "id": str(uuid.uuid4()),
+            "id": msg_id,
             "sender": self.name,
             "timestamp": int(time.time()),
             "message": text
         }
+        
+        self.seen_messages.add(msg_id)
         
         time_str = datetime.now().strftime("%H:%M")
         
